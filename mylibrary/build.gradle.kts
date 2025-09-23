@@ -40,4 +40,6 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    implementation("com.github.chrisbanes:PhotoView:2.3.0")
+    implementation("com.otaliastudios:zoomlayout:1.9.0") // Updated version
 }

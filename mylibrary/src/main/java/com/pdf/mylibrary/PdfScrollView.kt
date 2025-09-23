@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.ParcelFileDescriptor
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -16,21 +17,23 @@ class PdfScrollView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
 ) : FrameLayout(context, attrs) {
 
-    private var rendererCore: PdfRendererCore? = null
-    private val recyclerView = RecyclerView(context)
+    private var rendererCore: RendererCore? = null
     private var adapter: PdfPageAdapter? = null
 
-    // zoom factor
     private var scaleFactor = 1f
 
     private val handler = Handler(Looper.getMainLooper())
     private var pendingRerender: Runnable? = null
-    private val rerenderDelayMs = 120L // small debounce while user is pinching
+    private val rerenderDelayMs = 120L
+
+    private val recyclerView = RecyclerView(context).apply {
+        layoutManager = LinearLayoutManager(context)
+        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+    }
 
     private val scaleDetector = ScaleGestureDetector(context,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
-                // stop parent from intercepting while scaling
                 parent?.requestDisallowInterceptTouchEvent(true)
                 return true
             }
@@ -45,19 +48,14 @@ class PdfScrollView @JvmOverloads constructor(
 
             override fun onScaleEnd(detector: ScaleGestureDetector) {
                 parent?.requestDisallowInterceptTouchEvent(false)
-                // final rerender
                 scheduleRerenderVisiblePages(immediate = true)
             }
         })
 
     init {
-        recyclerView.layoutManager = LinearLayoutManager(context)
-        addView(recyclerView, LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-
-        // Make sure pinch events reach the detector even though RecyclerView scrolls.
+        addView(recyclerView)
         recyclerView.setOnTouchListener { _, event ->
             scaleDetector.onTouchEvent(event)
-            // return false so RecyclerView still receives touch events for scrolling
             false
         }
     }
@@ -75,7 +73,6 @@ class PdfScrollView @JvmOverloads constructor(
         val last = lm.findLastVisibleItemPosition().coerceAtLeast(first)
         if (first <= last) {
             adapter?.let {
-                // notify only visible range so only those get re-bound (and re-rendered)
                 it.notifyItemRangeChanged(first, last - first + 1)
             }
         }
@@ -83,7 +80,9 @@ class PdfScrollView @JvmOverloads constructor(
 
     fun fromFile(file: File) {
         close()
-        rendererCore = PdfRendererCore(file)
+        val parcelFileDescriptor =
+            ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        rendererCore = RendererCore(parcelFileDescriptor)
         setupAdapter()
     }
 
@@ -110,21 +109,11 @@ class PdfScrollView @JvmOverloads constructor(
     }
 
     private fun setupAdapter() {
-        rendererCore?.let {
-            adapter = PdfPageAdapter(it) { scaleFactor }
+        rendererCore?.let { core ->
+            val screenWidth = resources.displayMetrics.widthPixels
+            adapter = PdfPageAdapter(context, core, screenWidth)
             recyclerView.adapter = adapter
         }
-    }
-
-    fun getPageCount(): Int = rendererCore?.getPageCount() ?: 0
-
-    fun scrollToPage(index: Int) {
-        recyclerView.scrollToPosition(index)
-    }
-
-    fun zoom(scale: Float) {
-        scaleFactor = scale.coerceIn(1f, 5f)
-        scheduleRerenderVisiblePages(immediate = true)
     }
 
     fun close() {
@@ -134,7 +123,6 @@ class PdfScrollView @JvmOverloads constructor(
         recyclerView.adapter = null
     }
 
-    // ensure ScaleGestureDetector is fed if touch somehow reaches parent (just in case)
     override fun onTouchEvent(event: MotionEvent): Boolean {
         scaleDetector.onTouchEvent(event)
         return super.onTouchEvent(event)

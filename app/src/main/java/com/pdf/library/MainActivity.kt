@@ -8,12 +8,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.pdf.mylibrary.PdfScrollView
-import java.io.File
 
 class MainActivity : AppCompatActivity() {
-
-
-    private lateinit var pdfScroll: com.pdf.mylibrary.PdfScrollView
+    private lateinit var pdfScroll: PdfScrollView
 
     private val pickPdfLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -34,15 +31,6 @@ class MainActivity : AppCompatActivity() {
 
         pdfScroll = findViewById(R.id.pdfScroll)
 
-//        // Load from file
-//        val file = File(filesDir, "sample.pdf")
-//        pdfScroll.fromFile(file)
-//
-//        // Navigate
-//        pdfScroll.scrollToPage(2)
-//
-//        // Zoom in
-//        pdfScroll.zoom(2.0f)
 
         pickPdfLauncher.launch(arrayOf("application/pdf"))
 
